@@ -5,6 +5,7 @@ from dateutil import parser
 from typing import AsyncGenerator, Set
 import tldextract as tld
 import random
+import json
 import asyncio
 from aiohttp_socks import ProxyConnector
 from aiohttp import ClientSession, ClientTimeout
@@ -96,14 +97,10 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
 
         # Sort data by publication date in descending order to process newest first
         sorted_data = sorted(data, key=lambda x: x["pubDate"], reverse=True)
-        filtered_data = []
-        for entry in sorted_data:
-            pub_date = convert_to_standard_timezone(entry["pubDate"])
-            if is_within_timeframe(pub_date, max_oldness_seconds) and entry["article_id"] not in queried_article_ids:
-                filtered_data.append(entry)
-                queried_article_ids.add(entry["article_id"])  # Add to queried IDs set
-            else:
-                logging.info(f"Entry {entry['title']} with date {entry['pubDate']} is too old or already queried.")
+        filtered_data = [entry for entry in sorted_data if is_within_timeframe(convert_to_standard_timezone(entry["pubDate"]), max_oldness_seconds) and entry["article_id"] not in queried_article_ids]
+
+        for entry in filtered_data:
+            queried_article_ids.add(entry["article_id"])  # Add to queried IDs set
 
         logging.info(f"[News stream collector] Filtered data : {len(filtered_data)}")
 
@@ -131,7 +128,7 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
             new_item = Item(
                 content=Content(str(content_article_str)),
                 author=Author(str(author_sha1_hex)),
-                created_at=CreatedAt(pub_date.strftime("%Y-%m-%dT%H:%M:%S.00Z")),
+                created_at=CreatedAt(convert_to_standard_timezone(entry["pubDate"]).strftime("%Y-%m-%dT%H:%M:%S.00Z")),
                 title=Title(entry["title"]),
                 domain=Domain(str(domain_str)),
                 url=Url(entry["link"]),
