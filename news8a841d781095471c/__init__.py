@@ -1,6 +1,6 @@
 import hashlib
 import logging
-from datetime import datetime as datett, timedelta, timezone
+from datetime import datetime as datett, timezone
 from dateutil import parser
 from typing import AsyncGenerator, Set
 import tldextract as tld
@@ -25,6 +25,7 @@ DEFAULT_MAXIMUM_ITEMS = 10
 DEFAULT_MIN_POST_LENGTH = 10
 BASE_TIMEOUT = 30
 FETCH_DELAY = 20  # Delay between fetch attempts
+RESET_INTERVAL = 86400  # 24 hours in seconds
 
 USER_AGENT_LIST = [
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
@@ -73,8 +74,16 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
 
     yielded_items = 0
     queried_article_ids: Set[str] = set()  # Track queried article IDs
+    last_reset_time = datett.now(timezone.utc)
 
     while yielded_items < maximum_items_to_collect:
+        # Reset queried_article_ids every 24 hours
+        current_time = datett.now(timezone.utc)
+        if (current_time - last_reset_time).total_seconds() > RESET_INTERVAL:
+            queried_article_ids.clear()
+            last_reset_time = current_time
+            logging.info("Reset queried_article_ids set.")
+
         proxy = random.choice(proxies)
         logging.info(f"Using proxy {proxy}")
         data = await fetch_data(feed_url, proxy)
