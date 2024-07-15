@@ -60,7 +60,8 @@ def is_within_timeframe_seconds(dt_str, timeframe_sec):
     dt = dt.replace(tzinfo=timezone.utc)
     current_dt = datett.now(timezone.utc)
     time_diff = current_dt - dt
-    return abs(time_diff) <= timedelta(seconds=timeframe_sec)
+    logging.info(f"Comparing current time {current_dt} with entry time {dt}. Time difference in seconds: {time_diff.total_seconds()}")
+    return abs(time_diff.total_seconds()) <= timeframe_sec
 
 def read_parameters(parameters):
     if parameters and isinstance(parameters, dict):
