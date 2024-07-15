@@ -1,4 +1,3 @@
-import aiohttp
 import aiofiles
 import hashlib
 import logging
@@ -7,7 +6,6 @@ from dateutil import parser
 from typing import AsyncGenerator, Set
 import tldextract as tld
 import random
-import json
 import asyncio
 from aiohttp_socks import ProxyConnector
 from aiohttp import ClientSession, ClientTimeout
@@ -28,7 +26,7 @@ DEFAULT_OLDNESS_SECONDS = 3600 * 3  # 3 hours
 DEFAULT_MAXIMUM_ITEMS = 10
 DEFAULT_MIN_POST_LENGTH = 10
 BASE_TIMEOUT = 30
-FETCH_DELAY = 5  # Delay between fetch attempts
+FETCH_DELAY = 20  # Delay between fetch attempts
 RESET_INTERVAL = 86400  # 24 hours in seconds
 
 # User Agent List
