@@ -29,7 +29,7 @@ DEFAULT_MAXIMUM_ITEMS = 10
 DEFAULT_MIN_POST_LENGTH = 10
 DEFAULT_CHUNK_SIZE = 15  # Default number of articles to process per chunk
 BASE_TIMEOUT = 30
-FETCH_DELAY = 20  # Delay between fetch attempts
+FETCH_DELAY = 5  # Delay between fetch attempts
 RESET_INTERVAL = 86400  # 24 hours in seconds
 
 # User Agent List
