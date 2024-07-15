@@ -7,6 +7,7 @@ from typing import AsyncGenerator
 import tldextract as tld
 import random
 import json
+import asyncio
 from aiohttp_socks import ProxyConnector
 from aiohttp import ClientSession, ClientTimeout
 
@@ -85,7 +86,10 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
         data = await fetch_data(feed_url, proxy)
 
         if not data:
+            await asyncio.sleep(1)  # Add delay before retrying
             continue
+
+        logging.info(f"Total data fetched: {len(data)}")
 
         sorted_data = sorted(data, key=lambda x: x["pubDate"], reverse=True)
         sorted_data = [entry for entry in sorted_data if is_within_timeframe_seconds(convert_to_standard_timezone(entry["pubDate"]), max_oldness_seconds)]
@@ -93,6 +97,7 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
 
         if len(sorted_data) == 0:
             logging.info("No data found within the specified timeframe and length.")
+            await asyncio.sleep(1)  # Add delay before retrying
             continue
 
         sorted_data = random.sample(sorted_data, int(len(sorted_data) * 0.3))
@@ -124,7 +129,9 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
 
                 domain_str = entry["source_url"] if entry.get("source_url") else "unknown"
                 domain_str = tld.extract(domain_str).registered_domain
-                
+
+                logging.info(f"[News stream collector] Entry content length: {len(content_article_str)}")
+
                 new_item = Item(
                     content=Content(str(content_article_str)),
                     author=Author(str(author_sha1_hex)),
@@ -135,8 +142,11 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
                     external_id=ExternalId(entry["article_id"])
                 )
 
-                yielded_items += 1
-                yield new_item
+                if len(new_item.content) >= min_post_length:
+                    yielded_items += 1
+                    yield new_item
+                else:
+                    logging.info(f"[News stream collector] Skipping entry with content length {len(new_item.content)}")
             else:
                 dt = datett.strptime(pub_date, "%Y-%m-%dT%H:%M:%S.00Z")
                 dt = dt.replace(tzinfo=timezone.utc)
@@ -148,6 +158,8 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
                 if successive_old_entries >= 5:
                     logging.info(f"[News stream collector] Too many old entries. Stopping.")
                     break
+
+        await asyncio.sleep(1)  # Add delay before retrying
     logging.info(f"[News stream collector] Done.")
 
 def load_proxies(file_path):
