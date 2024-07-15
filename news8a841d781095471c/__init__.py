@@ -21,7 +21,7 @@ from exorde_data import (
     ExternalId,
 )
 
-DEFAULT_OLDNESS_SECONDS = 3600*3  # 3 hours
+DEFAULT_OLDNESS_SECONDS = 3600 * 3  # 3 hours
 DEFAULT_MAXIMUM_ITEMS = 10
 DEFAULT_MIN_POST_LENGTH = 10
 BASE_TIMEOUT = 30
@@ -29,6 +29,8 @@ BASE_TIMEOUT = 30
 USER_AGENT_LIST = [
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
 ]
+
+logging.basicConfig(level=logging.INFO)
 
 async def fetch_data(url, proxy, headers=None):
     connector = ProxyConnector.from_url(f"socks5://{proxy[0]}:{proxy[1]}", rdns=True)
@@ -39,12 +41,13 @@ async def fetch_data(url, proxy, headers=None):
                 response_text = await response.text()
                 if response.status == 200:
                     json_data = await response.json(content_type=None)  # Manually handle content type
+                    logging.info(f"Successfully fetched data with proxy {proxy}")
                     return json_data
                 else:
                     logging.error(f"Error fetching data: {response.status} {response_text}")
                     return []
     except Exception as e:
-        logging.error(f"Error fetching data: {e}")
+        logging.error(f"Error fetching data with proxy {proxy}: {e}")
         return []
 
 def convert_to_standard_timezone(_date):
@@ -87,6 +90,10 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
         sorted_data = sorted(data, key=lambda x: x["pubDate"], reverse=True)
         sorted_data = [entry for entry in sorted_data if is_within_timeframe_seconds(convert_to_standard_timezone(entry["pubDate"]), max_oldness_seconds)]
         logging.info(f"[News stream collector] Filtered data : {len(sorted_data)}")
+
+        if len(sorted_data) == 0:
+            logging.info("No data found within the specified timeframe and length.")
+            continue
 
         sorted_data = random.sample(sorted_data, int(len(sorted_data) * 0.3))
 
