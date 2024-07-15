@@ -3,7 +3,7 @@ import hashlib
 import logging
 from datetime import datetime as datett, timedelta, timezone
 from dateutil import parser
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Set
 import tldextract as tld
 import random
 import json
@@ -26,6 +26,7 @@ DEFAULT_OLDNESS_SECONDS = 3600 * 3  # 3 hours
 DEFAULT_MAXIMUM_ITEMS = 10
 DEFAULT_MIN_POST_LENGTH = 10
 BASE_TIMEOUT = 30
+FETCH_DELAY = 5  # Delay between fetch attempts
 
 USER_AGENT_LIST = [
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
@@ -79,7 +80,9 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
     proxies = load_proxies('/exorde/ips.txt')
     max_oldness_seconds, maximum_items_to_collect, min_post_length = read_parameters(parameters)
     logging.info(f"[News stream collector] Fetching data from {feed_url} with parameters: {parameters}")
+
     yielded_items = 0
+    queried_article_ids: Set[str] = set()  # Track queried article IDs
 
     while yielded_items < maximum_items_to_collect:
         proxy = random.choice(proxies)
@@ -87,7 +90,7 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
         data = await fetch_data(feed_url, proxy)
 
         if not data:
-            await asyncio.sleep(5)  # Add delay before retrying
+            await asyncio.sleep(FETCH_DELAY)  # Add delay before retrying
             continue
 
         logging.info(f"Total data fetched: {len(data)}")
@@ -96,16 +99,17 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
         filtered_data = []
         for entry in sorted_data:
             pub_date = convert_to_standard_timezone(entry["pubDate"])
-            if is_within_timeframe_seconds(pub_date, max_oldness_seconds):
+            if is_within_timeframe_seconds(pub_date, max_oldness_seconds) and entry["article_id"] not in queried_article_ids:
                 filtered_data.append(entry)
+                queried_article_ids.add(entry["article_id"])  # Add to queried IDs set
             else:
-                logging.info(f"Entry {entry['title']} with date {entry['pubDate']} is too old.")
+                logging.info(f"Entry {entry['title']} with date {entry['pubDate']} is too old or already queried.")
 
         logging.info(f"[News stream collector] Filtered data : {len(filtered_data)}")
 
         if len(filtered_data) == 0:
             logging.info("No data found within the specified timeframe and length.")
-            await asyncio.sleep(5)  # Add delay before retrying
+            await asyncio.sleep(FETCH_DELAY)  # Add delay before retrying
             continue
 
         filtered_data = random.sample(filtered_data, int(len(filtered_data) * 0.3))
@@ -127,14 +131,7 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
                 sha1.update(author.encode())
                 author_sha1_hex = sha1.hexdigest()
 
-                content_article_str = ""
-                if entry.get("content"):
-                    content_article_str = entry["content"]
-                elif entry.get("description"):
-                    content_article_str = entry["description"]
-                else:
-                    content_article_str = entry["title"]
-
+                content_article_str = entry.get("content") or entry.get("description") or entry["title"]
                 domain_str = entry["source_url"] if entry.get("source_url") else "unknown"
                 domain_str = tld.extract(domain_str).registered_domain
 
@@ -167,7 +164,7 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
                     logging.info(f"[News stream collector] Too many old entries. Stopping.")
                     break
 
-        await asyncio.sleep(5)  # Add delay before retrying
+        await asyncio.sleep(FETCH_DELAY)  # Add delay before retrying
     logging.info(f"[News stream collector] Done.")
 
 def load_proxies(file_path):
