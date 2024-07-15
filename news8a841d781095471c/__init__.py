@@ -1,4 +1,3 @@
-import aiohttp
 import hashlib
 import logging
 from datetime import datetime as datett, timedelta, timezone
@@ -6,7 +5,6 @@ from dateutil import parser
 from typing import AsyncGenerator, Set
 import tldextract as tld
 import random
-import json
 import asyncio
 from aiohttp_socks import ProxyConnector
 from aiohttp import ClientSession, ClientTimeout
