@@ -2,7 +2,7 @@ import json
 import random
 import aiohttp
 from aiohttp_socks import ProxyConnector
-from aiohttp import ClientSession
+from aiohttp import ClientSession, ClientTimeout
 from datetime import datetime as datett, timedelta, timezone
 from dateutil import parser
 import logging
@@ -61,7 +61,8 @@ def read_parameters(parameters):
 
 async def create_session_with_proxy(ip, port):
     connector = ProxyConnector.from_url(f"socks5://{ip}:{port}", rdns=True)
-    session = ClientSession(connector=connector, headers={"User-Agent": random.choice(USER_AGENT_LIST)}, timeout=BASE_TIMEOUT)
+    timeout = ClientTimeout(total=BASE_TIMEOUT)
+    session = ClientSession(connector=connector, headers={"User-Agent": random.choice(USER_AGENT_LIST)}, timeout=timeout)
     logging.info(f"Created session with proxy {ip}:{port}")
     return session, f"{ip}:{port}"
 
