@@ -5,6 +5,7 @@ from dateutil import parser
 from typing import AsyncGenerator, Set
 import tldextract as tld
 import random
+import json
 import asyncio
 from aiohttp_socks import ProxyConnector
 from aiohttp import ClientSession, ClientTimeout
@@ -20,30 +21,25 @@ from exorde_data import (
     ExternalId,
 )
 
-# Constants
 DEFAULT_OLDNESS_SECONDS = 3600 * 3  # 3 hours
 DEFAULT_MAXIMUM_ITEMS = 10
 DEFAULT_MIN_POST_LENGTH = 10
 BASE_TIMEOUT = 30
-FETCH_DELAY = 5  # Delay between fetch attempts
+FETCH_DELAY = 20  # Delay between fetch attempts
 RESET_INTERVAL = 86400  # 24 hours in seconds
 
-# User Agent List
 USER_AGENT_LIST = [
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
 ]
 
-# Logging configuration
 logging.basicConfig(level=logging.INFO)
 
 async def fetch_data(url, proxy, headers=None):
-    """Fetch data from the URL using a specified proxy."""
     connector = ProxyConnector.from_url(f"socks5://{proxy[0]}:{proxy[1]}", rdns=True)
     timeout = ClientTimeout(total=BASE_TIMEOUT)
-    
     try:
-        async with ClientSession(connector=connector, headers=headers or {"User-Agent": random.choice(USER_AGENT_LIST)}, timeout=timeout) as session:
-            async with session.get(url) as response:
+        async with ClientSession(connector=connector, headers={"User-Agent": random.choice(USER_AGENT_LIST)}, timeout=timeout) as session:
+            async with session.get(url, headers=headers) as response:
                 response_text = await response.text()
                 if response.status == 200:
                     json_data = await response.json(content_type=None)  # Manually handle content type
@@ -57,27 +53,23 @@ async def fetch_data(url, proxy, headers=None):
         return []
 
 def convert_to_standard_timezone(dt_str):
-    """Convert datetime string to standard timezone format."""
     dt = parser.parse(dt_str)
-    return dt.astimezone(timezone.utc)
+    return dt.replace(tzinfo=timezone.utc)
 
 def is_within_timeframe(dt, timeframe_sec):
-    """Check if the datetime is within the specified timeframe."""
     current_dt = datett.now(timezone.utc)
     time_diff = current_dt - dt
     return abs(time_diff.total_seconds()) <= timeframe_sec
 
 def read_parameters(parameters):
-    """Read and set default parameters."""
     max_oldness_seconds = parameters.get("max_oldness_seconds", DEFAULT_OLDNESS_SECONDS)
     maximum_items_to_collect = parameters.get("maximum_items_to_collect", DEFAULT_MAXIMUM_ITEMS)
     min_post_length = parameters.get("min_post_length", DEFAULT_MIN_POST_LENGTH)
     return max_oldness_seconds, maximum_items_to_collect, min_post_length
 
 async def query(parameters: dict) -> AsyncGenerator[Item, None]:
-    """Query the feed and yield items."""
     feed_url = 'https://raw.githubusercontent.com/user1exd/rss_realtime_feed/main/data/feed.json'
-    proxies = [proxy async for proxy in load_proxies('/exorde/ips.txt')]
+    proxies = load_proxies('/exorde/ips.txt')
     max_oldness_seconds, maximum_items_to_collect, min_post_length = read_parameters(parameters)
     logging.info(f"[News stream collector] Fetching data from {feed_url} with parameters: {parameters}")
 
@@ -105,16 +97,12 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
 
         # Sort data by publication date in descending order to process newest first
         sorted_data = sorted(data, key=lambda x: x["pubDate"], reverse=True)
-        filtered_data = [
-            entry for entry in sorted_data
-            if is_within_timeframe(convert_to_standard_timezone(entry["pubDate"]), max_oldness_seconds)
-            and entry["article_id"] not in queried_article_ids
-        ]
+        filtered_data = [entry for entry in sorted_data if is_within_timeframe(convert_to_standard_timezone(entry["pubDate"]), max_oldness_seconds) and entry["article_id"] not in queried_article_ids]
 
         for entry in filtered_data:
             queried_article_ids.add(entry["article_id"])  # Add to queried IDs set
 
-        logging.info(f"[News stream collector] Filtered data: {len(filtered_data)}")
+        logging.info(f"[News stream collector] Filtered data : {len(filtered_data)}")
 
         if len(filtered_data) == 0:
             logging.info("No data found within the specified timeframe and length.")
@@ -156,13 +144,15 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
         await asyncio.sleep(FETCH_DELAY)  # Add delay before retrying
     logging.info(f"[News stream collector] Done.")
 
-async def load_proxies(file_path):
-    """Load proxies from a file asynchronously."""
-    async with aiofiles.open(file_path, 'r') as file:
-        async for line in file:
-            ip_port = line.strip().split('=')[1]
-            ip, port = ip_port.split(':')
-            yield (ip, port)
+def load_proxies(file_path):
+    with open(file_path, 'r') as file:
+        lines = file.readlines()
+    proxies = []
+    for line in lines:
+        ip_port = line.strip().split('=')[1]
+        ip, port = ip_port.split(':')
+        proxies.append((ip, port))
+    return proxies
 
 # Ensure you have 'aiohttp_socks' installed to use the ProxyConnector.
 # You can install it using pip: pip install aiohttp_socks
