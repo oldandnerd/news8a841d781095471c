@@ -26,7 +26,7 @@ DEFAULT_OLDNESS_SECONDS = 3600 * 3  # 3 hours
 DEFAULT_MAXIMUM_ITEMS = 10
 DEFAULT_MIN_POST_LENGTH = 10
 BASE_TIMEOUT = 30
-FETCH_DELAY = 20  # Delay between fetch attempts
+FETCH_DELAY = 5  # Delay between fetch attempts
 
 USER_AGENT_LIST = [
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
@@ -95,6 +95,7 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
 
         logging.info(f"Total data fetched: {len(data)}")
 
+        # Sort data by publication date in descending order to process newest first
         sorted_data = sorted(data, key=lambda x: x["pubDate"], reverse=True)
         filtered_data = []
         for entry in sorted_data:
