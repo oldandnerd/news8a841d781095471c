@@ -49,7 +49,7 @@ async def fetch_data(url, proxy, headers=None):
         async with ClientSession(connector=connector, headers=headers or {"User-Agent": random.choice(USER_AGENT_LIST)}, timeout=timeout) as session:
             async with session.get(url) as response:
                 response_text = await response.text()
-                if response.status == 200):
+                if response.status == 200:
                     json_data = await response.json(content_type=None)  # Manually handle content type
                     logging.info(f"Successfully fetched data with proxy {proxy}")
                     return json_data
