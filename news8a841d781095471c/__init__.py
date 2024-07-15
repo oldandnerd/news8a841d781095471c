@@ -87,7 +87,7 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
         data = await fetch_data(feed_url, proxy)
 
         if not data:
-            await asyncio.sleep(1)  # Add delay before retrying
+            await asyncio.sleep(5)  # Add delay before retrying
             continue
 
         logging.info(f"Total data fetched: {len(data)}")
@@ -105,7 +105,7 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
 
         if len(filtered_data) == 0:
             logging.info("No data found within the specified timeframe and length.")
-            await asyncio.sleep(1)  # Add delay before retrying
+            await asyncio.sleep(5)  # Add delay before retrying
             continue
 
         filtered_data = random.sample(filtered_data, int(len(filtered_data) * 0.3))
@@ -167,7 +167,7 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
                     logging.info(f"[News stream collector] Too many old entries. Stopping.")
                     break
 
-        await asyncio.sleep(1)  # Add delay before retrying
+        await asyncio.sleep(5)  # Add delay before retrying
     logging.info(f"[News stream collector] Done.")
 
 def load_proxies(file_path):
