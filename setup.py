@@ -8,7 +8,8 @@ setup(
         'aiohttp>=3.8.1',  # For asynchronous HTTP requests
         'python-dateutil>=2.8.2',  # For parsing dates
         'requests>=2.26.0',  # For fetching the JSON feed
-        'tldextract>=3.1.0'
+        'tldextract>=3.1.0',
+        'aiohttp_socks'
     ],
     extras_require={"dev": ["pytest", "pytest-cov", "pytest-asyncio"]},
 )
