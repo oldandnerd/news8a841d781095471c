@@ -9,7 +9,8 @@ setup(
         'python-dateutil>=2.8.2',  # For parsing dates
         'requests>=2.26.0',  # For fetching the JSON feed
         'tldextract>=3.1.0',
-        'aiohttp_socks'
+        'aiohttp_socks',
+        'aiofiles'
     ],
     extras_require={"dev": ["pytest", "pytest-cov", "pytest-asyncio"]},
 )
