@@ -1,11 +1,13 @@
+import aiohttp
 import aiofiles
 import hashlib
 import logging
 from datetime import datetime as datett, timezone
 from dateutil import parser
-from typing import AsyncGenerator, Set
+from typing import AsyncGenerator, List, Set
 import tldextract as tld
 import random
+import json
 import asyncio
 from aiohttp_socks import ProxyConnector
 from aiohttp import ClientSession, ClientTimeout
@@ -25,6 +27,7 @@ from exorde_data import (
 DEFAULT_OLDNESS_SECONDS = 3600 * 3  # 3 hours
 DEFAULT_MAXIMUM_ITEMS = 10
 DEFAULT_MIN_POST_LENGTH = 10
+DEFAULT_CHUNK_SIZE = 15  # Default number of articles to process per chunk
 BASE_TIMEOUT = 30
 FETCH_DELAY = 20  # Delay between fetch attempts
 RESET_INTERVAL = 86400  # 24 hours in seconds
@@ -46,7 +49,7 @@ async def fetch_data(url, proxy, headers=None):
         async with ClientSession(connector=connector, headers=headers or {"User-Agent": random.choice(USER_AGENT_LIST)}, timeout=timeout) as session:
             async with session.get(url) as response:
                 response_text = await response.text()
-                if response.status == 200:
+                if response.status == 200):
                     json_data = await response.json(content_type=None)  # Manually handle content type
                     logging.info(f"Successfully fetched data with proxy {proxy}")
                     return json_data
@@ -73,13 +76,14 @@ def read_parameters(parameters):
     max_oldness_seconds = parameters.get("max_oldness_seconds", DEFAULT_OLDNESS_SECONDS)
     maximum_items_to_collect = parameters.get("maximum_items_to_collect", DEFAULT_MAXIMUM_ITEMS)
     min_post_length = parameters.get("min_post_length", DEFAULT_MIN_POST_LENGTH)
-    return max_oldness_seconds, maximum_items_to_collect, min_post_length
+    chunk_size = parameters.get("chunk_size", DEFAULT_CHUNK_SIZE)
+    return max_oldness_seconds, maximum_items_to_collect, min_post_length, chunk_size
 
 async def query(parameters: dict) -> AsyncGenerator[Item, None]:
     """Query the feed and yield items."""
     feed_url = 'https://raw.githubusercontent.com/user1exd/rss_realtime_feed/main/data/feed.json'
     proxies = [proxy async for proxy in load_proxies('/exorde/ips.txt')]
-    max_oldness_seconds, maximum_items_to_collect, min_post_length = read_parameters(parameters)
+    max_oldness_seconds, maximum_items_to_collect, min_post_length, chunk_size = read_parameters(parameters)
     logging.info(f"[News stream collector] Fetching data from {feed_url} with parameters: {parameters}")
 
     yielded_items = 0
@@ -122,39 +126,42 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
             await asyncio.sleep(FETCH_DELAY)  # Add delay before retrying
             continue
 
-        filtered_data = random.sample(filtered_data, int(len(filtered_data) * 0.3))
+        # Process data in chunks
+        for i in range(0, len(filtered_data), chunk_size):
+            chunk = filtered_data[i:i + chunk_size]
 
-        for entry in filtered_data:
-            if random.random() < 0.25:
-                continue
-            if yielded_items >= maximum_items_to_collect:
-                break
+            for entry in chunk:
+                if random.random() < 0.25:
+                    continue
+                if yielded_items >= maximum_items_to_collect:
+                    break
 
-            sha1 = hashlib.sha1()
-            author = entry["creator"][0] if entry.get("creator") else "anonymous"
-            sha1.update(author.encode())
-            author_sha1_hex = sha1.hexdigest()
+                sha1 = hashlib.sha1()
+                author = entry["creator"][0] if entry.get("creator") else "anonymous"
+                sha1.update(author.encode())
+                author_sha1_hex = sha1.hexdigest()
 
-            content_article_str = entry.get("content") or entry.get("description") or entry["title"]
-            domain_str = tld.extract(entry["source_url"] or "unknown").registered_domain
+                content_article_str = entry.get("content") or entry.get("description") or entry["title"]
+                domain_str = tld.extract(entry["source_url"] or "unknown").registered_domain
 
-            new_item = Item(
-                content=Content(str(content_article_str)),
-                author=Author(str(author_sha1_hex)),
-                created_at=CreatedAt(convert_to_standard_timezone(entry["pubDate"]).strftime("%Y-%m-%dT%H:%M:%S.00Z")),
-                title=Title(entry["title"]),
-                domain=Domain(str(domain_str)),
-                url=Url(entry["link"]),
-                external_id=ExternalId(entry["article_id"])
-            )
+                new_item = Item(
+                    content=Content(str(content_article_str)),
+                    author=Author(str(author_sha1_hex)),
+                    created_at=CreatedAt(convert_to_standard_timezone(entry["pubDate"]).strftime("%Y-%m-%dT%H:%M:%S.00Z")),
+                    title=Title(entry["title"]),
+                    domain=Domain(str(domain_str)),
+                    url=Url(entry["link"]),
+                    external_id=ExternalId(entry["article_id"])
+                )
 
-            if len(new_item.content) >= min_post_length:
-                yielded_items += 1
-                yield new_item
-            else:
-                logging.info(f"[News stream collector] Skipping entry with content length {len(new_item.content)}")
+                if len(new_item.content) >= min_post_length:
+                    yielded_items += 1
+                    yield new_item
+                else:
+                    logging.info(f"[News stream collector] Skipping entry with content length {len(new_item.content)}")
 
-        await asyncio.sleep(FETCH_DELAY)  # Add delay before retrying
+            await asyncio.sleep(FETCH_DELAY)  # Add delay before processing the next chunk
+
     logging.info(f"[News stream collector] Done.")
 
 async def load_proxies(file_path):
