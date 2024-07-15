@@ -11,16 +11,7 @@ import tldextract as tld
 import hashlib
 import asyncio
 
-from exorde_data import (
-    Item,
-    Content,
-    Author,
-    CreatedAt,
-    Title,
-    Url,
-    Domain,
-    ExternalId,
-)
+from exorde_data import Item, Content, Author, CreatedAt, Title, Url, Domain, ExternalId
 
 # Default parameters
 DEFAULT_OLDNESS_SECONDS = 3600 * 3  # 3 hours
