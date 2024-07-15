@@ -92,19 +92,26 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
         logging.info(f"Total data fetched: {len(data)}")
 
         sorted_data = sorted(data, key=lambda x: x["pubDate"], reverse=True)
-        sorted_data = [entry for entry in sorted_data if is_within_timeframe_seconds(convert_to_standard_timezone(entry["pubDate"]), max_oldness_seconds)]
-        logging.info(f"[News stream collector] Filtered data : {len(sorted_data)}")
+        filtered_data = []
+        for entry in sorted_data:
+            pub_date = convert_to_standard_timezone(entry["pubDate"])
+            if is_within_timeframe_seconds(pub_date, max_oldness_seconds):
+                filtered_data.append(entry)
+            else:
+                logging.info(f"Entry {entry['title']} with date {entry['pubDate']} is too old.")
 
-        if len(sorted_data) == 0:
+        logging.info(f"[News stream collector] Filtered data : {len(filtered_data)}")
+
+        if len(filtered_data) == 0:
             logging.info("No data found within the specified timeframe and length.")
             await asyncio.sleep(1)  # Add delay before retrying
             continue
 
-        sorted_data = random.sample(sorted_data, int(len(sorted_data) * 0.3))
+        filtered_data = random.sample(filtered_data, int(len(filtered_data) * 0.3))
 
         successive_old_entries = 0
 
-        for entry in sorted_data:
+        for entry in filtered_data:
             if random.random() < 0.25:
                 continue
             logging.info(f"[News stream collector] Processing entry: {entry['title']} - {entry['pubDate']} - {entry['source_url']}")
