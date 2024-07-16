@@ -51,17 +51,22 @@ def read_parameters(parameters):
 
 async def query(parameters: dict) -> AsyncGenerator[Item, None]:
     feed_url = 'https://raw.githubusercontent.com/user1exd/rss_realtime_feed/main/data/feed.json'
-    data = await fetch_data(feed_url)
-
+    
     max_oldness_seconds, maximum_items_to_collect, min_post_length = read_parameters(parameters)
     logging.info(f"[News stream collector] Fetching data from {feed_url} with parameters: {parameters}")
 
+    data = await fetch_data(feed_url)
+    if not data:
+        logging.error("[News stream collector] No data fetched.")
+        return
+
+    logging.info(f"[News stream collector] Fetched {len(data)} items.")
+
     sorted_data = sorted(data, key=lambda x: x["pubDate"], reverse=True)
     filtered_data = [entry for entry in sorted_data if is_within_timeframe_seconds(convert_to_standard_timezone(entry["pubDate"]), max_oldness_seconds)]
+    logging.info(f"[News stream collector] Filtered data: {len(filtered_data)}")
 
-    logging.info(f"[News stream collector] Filtered data : {len(filtered_data)}")
     sampled_data = random.sample(filtered_data, min(len(filtered_data), int(len(filtered_data) * 0.3)))
-
     yielded_items = 0
     successive_old_entries = 0
 
