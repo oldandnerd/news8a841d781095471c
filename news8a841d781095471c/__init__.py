@@ -59,6 +59,7 @@ async def fetch_data(url, proxy, headers=None):
 
 def convert_to_standard_timezone(_date):
     dt = parser.parse(_date)
+    logging.debug(f"Converted {_date} to {dt.strftime('%Y-%m-%dT%H:%M:%S.00Z')}")
     return dt.strftime("%Y-%m-%dT%H:%M:%S.00Z")
 
 def is_within_timeframe_seconds(dt_str, timeframe_sec):
@@ -66,7 +67,9 @@ def is_within_timeframe_seconds(dt_str, timeframe_sec):
     dt = dt.replace(tzinfo=timezone.utc)
     current_dt = datett.now(timezone.utc)
     time_diff = current_dt - dt
-    return abs(time_diff) <= timedelta(seconds=timeframe_sec)
+    within_timeframe = abs(time_diff) <= timedelta(seconds=timeframe_sec)
+    logging.debug(f"Checked timeframe for {dt_str}: {within_timeframe} (diff: {time_diff})")
+    return within_timeframe
 
 def read_parameters(parameters):
     if parameters and isinstance(parameters, dict):
@@ -98,10 +101,23 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
         logging.info(f"Total data fetched: {len(data)}")
 
         sorted_data = sorted(data, key=lambda x: x["pubDate"], reverse=True)
-        sorted_data = [entry for entry in sorted_data if is_within_timeframe_seconds(convert_to_standard_timezone(entry["pubDate"]), max_oldness_seconds)]
-        logging.info(f"[News stream collector] Filtered data: {len(sorted_data)}")
+        filtered_data = []
 
-        sorted_data = random.sample(sorted_data, int(len(sorted_data) * 0.3))
+        for entry in sorted_data:
+            pub_date = convert_to_standard_timezone(entry["pubDate"])
+            if is_within_timeframe_seconds(pub_date, max_oldness_seconds):
+                filtered_data.append(entry)
+            else:
+                logging.debug(f"Entry {entry['title']} with date {pub_date} is outside the timeframe.")
+
+        logging.info(f"[News stream collector] Filtered data: {len(filtered_data)}")
+
+        if len(filtered_data) == 0:
+            logging.info("No data found within the specified timeframe and length.")
+            await asyncio.sleep(FETCH_DELAY)  # Add delay before retrying
+            continue
+
+        sorted_data = random.sample(filtered_data, int(len(filtered_data) * 0.3))
 
         successive_old_entries = 0
 
@@ -127,6 +143,10 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
                     content_article_str = entry["description"]
                 else:
                     content_article_str = entry["title"]
+
+                if len(content_article_str) < min_post_length:
+                    logging.debug(f"Skipping entry {entry['title']} due to insufficient content length ({len(content_article_str)}).")
+                    continue
 
                 domain_str = entry["source_url"] if entry.get("source_url") else "unknown"
                 domain_str = tld.extract(domain_str).registered_domain
