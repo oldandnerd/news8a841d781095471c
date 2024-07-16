@@ -145,8 +145,16 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
                     sha1.update(author.encode())
                     author_sha1_hex = sha1.hexdigest()
 
-                    content_article_str = entry.get("content") or entry.get("description") or entry["title"]
-                    domain_str = tld.extract(entry["source_url"] or "unknown").registered_domain
+                    content_article_str = ""
+                    if entry.get("content"):
+                        content_article_str = entry["content"]
+                    elif entry.get("description"):
+                        content_article_str = entry["description"]
+                    else:
+                        content_article_str = entry["title"]
+
+                    domain_str = entry["source_url"] if entry.get("source_url") else "unknown"
+                    domain_str = tld.extract(domain_str).registered_domain
 
                     new_item = Item(
                         content=Content(str(content_article_str)),
@@ -160,6 +168,7 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
 
                     if len(new_item.content) >= min_post_length:
                         yielded_items += 1
+                        logging.info(f"Processing entry: {entry['title']} - {entry['pubDate']} - {entry['source_url']}")
                         yield new_item
                     else:
                         logging.info(f"[News stream collector] Skipping entry with content length {len(new_item.content)}")
