@@ -2,7 +2,7 @@ import aiohttp
 import aiofiles
 import hashlib
 import logging
-from datetime import datetime as datett, timezone
+from datetime import datetime as datett, timedelta, timezone
 from dateutil import parser
 from typing import AsyncGenerator, List, Set
 import tldextract as tld
@@ -60,16 +60,18 @@ async def fetch_data(url, proxy, headers=None):
         logging.error(f"Error fetching data with proxy {proxy}: {e}")
         return []
 
-def convert_to_standard_timezone(dt_str):
+def convert_to_standard_timezone(_date):
     """Convert datetime string to standard timezone format."""
-    dt = parser.parse(dt_str)
-    return dt.astimezone(timezone.utc)
+    dt = parser.parse(_date)
+    return dt.strftime("%Y-%m-%dT%H:%M:%S.00Z")
 
-def is_within_timeframe(dt, timeframe_sec):
+def is_within_timeframe_seconds(dt_str, timeframe_sec):
     """Check if the datetime is within the specified timeframe."""
+    dt = datett.strptime(dt_str, "%Y-%m-%dT%H:%M:%S.00Z")
+    dt = dt.replace(tzinfo=timezone.utc)
     current_dt = datett.now(timezone.utc)
     time_diff = current_dt - dt
-    return abs(time_diff.total_seconds()) <= timeframe_sec
+    return abs(time_diff) <= timedelta(seconds=timeframe_sec)
 
 def read_parameters(parameters):
     """Read and set default parameters."""
@@ -112,12 +114,9 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
         sorted_data = sorted(data, key=lambda x: x["pubDate"], reverse=True)
         filtered_data = [
             entry for entry in sorted_data
-            if is_within_timeframe(convert_to_standard_timezone(entry["pubDate"]), max_oldness_seconds)
+            if is_within_timeframe_seconds(convert_to_standard_timezone(entry["pubDate"]), max_oldness_seconds)
             and entry["article_id"] not in queried_article_ids
         ]
-
-        for entry in filtered_data:
-            queried_article_ids.add(entry["article_id"])  # Add to queried IDs set
 
         logging.info(f"[News stream collector] Filtered data: {len(filtered_data)}")
 
@@ -130,35 +129,52 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
         for i in range(0, len(filtered_data), chunk_size):
             chunk = filtered_data[i:i + chunk_size]
 
+            successive_old_entries = 0  # Reset the counter for each chunk
+
             for entry in chunk:
                 if random.random() < 0.25:
                     continue
                 if yielded_items >= maximum_items_to_collect:
                     break
 
-                sha1 = hashlib.sha1()
-                author = entry["creator"][0] if entry.get("creator") else "anonymous"
-                sha1.update(author.encode())
-                author_sha1_hex = sha1.hexdigest()
+                pub_date = convert_to_standard_timezone(entry["pubDate"])
 
-                content_article_str = entry.get("content") or entry.get("description") or entry["title"]
-                domain_str = tld.extract(entry["source_url"] or "unknown").registered_domain
+                if is_within_timeframe_seconds(pub_date, max_oldness_seconds):
+                    sha1 = hashlib.sha1()
+                    author = entry["creator"][0] if entry.get("creator") else "anonymous"
+                    sha1.update(author.encode())
+                    author_sha1_hex = sha1.hexdigest()
 
-                new_item = Item(
-                    content=Content(str(content_article_str)),
-                    author=Author(str(author_sha1_hex)),
-                    created_at=CreatedAt(convert_to_standard_timezone(entry["pubDate"]).strftime("%Y-%m-%dT%H:%M:%S.00Z")),
-                    title=Title(entry["title"]),
-                    domain=Domain(str(domain_str)),
-                    url=Url(entry["link"]),
-                    external_id=ExternalId(entry["article_id"])
-                )
+                    content_article_str = entry.get("content") or entry.get("description") or entry["title"]
+                    domain_str = tld.extract(entry["source_url"] or "unknown").registered_domain
 
-                if len(new_item.content) >= min_post_length:
-                    yielded_items += 1
-                    yield new_item
+                    new_item = Item(
+                        content=Content(str(content_article_str)),
+                        author=Author(str(author_sha1_hex)),
+                        created_at=CreatedAt(pub_date),
+                        title=Title(entry["title"]),
+                        domain=Domain(str(domain_str)),
+                        url=Url(entry["link"]),
+                        external_id=ExternalId(entry["article_id"])
+                    )
+
+                    if len(new_item.content) >= min_post_length:
+                        yielded_items += 1
+                        yield new_item
+                    else:
+                        logging.info(f"[News stream collector] Skipping entry with content length {len(new_item.content)}")
                 else:
-                    logging.info(f"[News stream collector] Skipping entry with content length {len(new_item.content)}")
+                    # Log the entry being too old
+                    dt = datett.strptime(pub_date, "%Y-%m-%dT%H:%M:%S.00Z")
+                    dt = dt.replace(tzinfo=timezone.utc)
+                    current_dt = datett.now(timezone.utc)
+                    time_diff = current_dt - dt
+                    logging.info(f"[News stream collector] Entry is {abs(time_diff)} old: skipping.")
+
+                    successive_old_entries += 1
+                    if successive_old_entries >= 5:
+                        logging.info(f"[News stream collector] Too many old entries. Stopping.")
+                        break
 
             await asyncio.sleep(FETCH_DELAY)  # Add delay before processing the next chunk
 
