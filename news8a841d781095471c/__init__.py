@@ -112,11 +112,14 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
 
         # Sort data by publication date in descending order to process newest first
         sorted_data = sorted(data, key=lambda x: x["pubDate"], reverse=True)
-        filtered_data = [
-            entry for entry in sorted_data
-            if is_within_timeframe_seconds(convert_to_standard_timezone(entry["pubDate"]), max_oldness_seconds)
-            and entry["article_id"] not in queried_article_ids
-        ]
+        
+        filtered_data = []
+        for entry in sorted_data:
+            pub_date = convert_to_standard_timezone(entry["pubDate"])
+            if is_within_timeframe_seconds(pub_date, max_oldness_seconds):
+                filtered_data.append(entry)
+            else:
+                logging.debug(f"Entry {entry['title']} with date {pub_date} is outside the timeframe.")
 
         logging.info(f"[News stream collector] Filtered data: {len(filtered_data)}")
 
@@ -171,14 +174,14 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
                         logging.info(f"Processing entry: {entry['title']} - {entry['pubDate']} - {entry['source_url']}")
                         yield new_item
                     else:
-                        logging.info(f"[News stream collector] Skipping entry with content length {len(new_item.content)}")
+                        logging.debug(f"Skipping entry {entry['title']} with content length {len(new_item.content)}")
                 else:
                     # Log the entry being too old
                     dt = datett.strptime(pub_date, "%Y-%m-%dT%H:%M:%S.00Z")
                     dt = dt.replace(tzinfo=timezone.utc)
                     current_dt = datett.now(timezone.utc)
                     time_diff = current_dt - dt
-                    logging.info(f"[News stream collector] Entry is {abs(time_diff)} old: skipping.")
+                    logging.info(f"[News stream collector] Entry {entry['title']} is {abs(time_diff)} old: skipping.")
 
                     successive_old_entries += 1
                     if successive_old_entries >= 5:
