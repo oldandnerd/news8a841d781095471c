@@ -29,6 +29,11 @@ DEFAULT_MIN_POST_LENGTH = 10
 BASE_TIMEOUT = 30
 FETCH_DELAY = 5  # Delay between fetch attempts
 
+# User Agent List
+USER_AGENT_LIST = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
+]
+
 # Logging configuration
 logging.basicConfig(level=logging.INFO)
 
