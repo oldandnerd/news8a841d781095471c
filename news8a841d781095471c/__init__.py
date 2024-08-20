@@ -55,7 +55,7 @@ def read_parameters(parameters):
 
 async def query(parameters: dict) -> AsyncGenerator[Item, None]:
     max_oldness_seconds, maximum_items_to_collect, min_post_length = read_parameters(parameters)
-    feed_url = f'http://192.227.159.4:8000/get_articles?size={maximum_items_to_collect}'  # Adjust this URL to match your server's endpoint
+    feed_url = f'http://news_server:8000/get_articles?size={maximum_items_to_collect}'  # Adjust this URL to match your server's endpoint
     data = await fetch_data(feed_url)
 
     logging.info(f"[News stream collector] Fetching data from {feed_url} with parameters: {parameters}")
