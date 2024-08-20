@@ -21,6 +21,7 @@ from exorde_data import (
 
 DEFAULT_OLDNESS_SECONDS = 3600*3  # 3 hours
 DEFAULT_MAXIMUM_ITEMS = 10
+DEFAULT_MIN_POST_LENGTH = 10
 
 async def fetch_data(url, headers=None):
     try:
@@ -41,37 +42,42 @@ def convert_to_standard_timezone(_date):
     dt = parser.parse(_date)
     return dt.strftime("%Y-%m-%dT%H:%M:%S.00Z")
 
+def read_parameters(parameters):
+    if parameters and isinstance(parameters, dict):
+        max_oldness_seconds = parameters.get("max_oldness_seconds", DEFAULT_OLDNESS_SECONDS)
+        maximum_items_to_collect = parameters.get("maximum_items_to_collect", DEFAULT_MAXIMUM_ITEMS)
+        min_post_length = parameters.get("min_post_length", DEFAULT_MIN_POST_LENGTH)
+    else:
+        max_oldness_seconds = DEFAULT_OLDNESS_SECONDS
+        maximum_items_to_collect = DEFAULT_MAXIMUM_ITEMS
+        min_post_length = DEFAULT_MIN_POST_LENGTH
+    return max_oldness_seconds, maximum_items_to_collect, min_post_length
+
 async def query(parameters: dict) -> AsyncGenerator[Item, None]:
-    maximum_items_to_collect = parameters.get("maximum_items_to_collect", DEFAULT_MAXIMUM_ITEMS)
-    feed_url = f'http://news_server:8000/get_articles?size={maximum_items_to_collect * 3}'  # Fetch more initially
-    stored_data = []
+    max_oldness_seconds, maximum_items_to_collect, min_post_length = read_parameters(parameters)
+    feed_url = f'http://news_server:8000/get_articles?size={maximum_items_to_collect}'  # Adjust this URL to match your server's endpoint
+    data = await fetch_data(feed_url)
 
-    async def refill_data():
-        nonlocal stored_data
-        logging.info(f"[News stream collector] Fetching data from {feed_url} with parameters: {parameters}")
-        data = await fetch_data(feed_url)
-        if data:
-            stored_data = random.sample(data, len(data))  # Shuffle data and store it
-            logging.info(f"[News stream collector] Total data received and stored: {len(stored_data)}")
-        else:
-            logging.warning("Fetched data is empty. Retrying after 60 seconds.")
-            await asyncio.sleep(60)
-    
-    # Initial fill
-    await refill_data()
-
+    logging.info(f"[News stream collector] Fetching data from {feed_url} with parameters: {parameters}")
     yielded_items = 0
 
-    while yielded_items < maximum_items_to_collect:
-        if not stored_data:
-            await refill_data()
-            if not stored_data:  # If still empty after refilling, exit loop
-                logging.warning("No more data available after refill attempt.")
-                break
+    logging.info(f"[News stream collector] Total data received: {len(data)}")
 
-        entry = stored_data.pop()
-        
+    if not data:
+        logging.warning("Fetched data is empty. Retrying after 60 seconds.")
+        await asyncio.sleep(60)
+        return
+
+    sorted_data = random.sample(data, int(len(data) * 0.3))
+
+    successive_old_entries = 0
+
+    for entry in sorted_data:
+        if random.random() < 0.25:
+            continue
         logging.info(f"[News stream collector] Processing entry: {entry['title']} - {entry['pubDate']} - {entry['source_url']}")
+        if yielded_items >= maximum_items_to_collect:
+            break
 
         pub_date = convert_to_standard_timezone(entry["pubDate"])
 
@@ -80,9 +86,19 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
         sha1.update(author.encode())
         author_sha1_hex = sha1.hexdigest()
 
-        content_article_str = entry.get("content") or entry.get("description") or entry["title"]
+        content_article_str = ""
+        # if no content (null), then if description is not null, use it as content
+        # else if description is null as well, then use title as content
+        if entry.get("content"):
+            content_article_str = entry["content"]
+        elif entry.get("description"):
+            content_article_str = entry["description"]
+        else:
+            content_article_str = entry["title"]
 
         domain_str = entry["source_url"] if entry.get("source_url") else "unknown"
+        # remove the domain using tldextract to have only the domain name
+        # e.g. http://www.example.com -> example.com
         domain_str = tld.extract(domain_str).registered_domain
 
         new_item = Item(
