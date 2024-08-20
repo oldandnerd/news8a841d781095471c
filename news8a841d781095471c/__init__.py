@@ -43,7 +43,7 @@ def convert_to_standard_timezone(_date):
 
 async def query(parameters: dict) -> AsyncGenerator[Item, None]:
     maximum_items_to_collect = parameters.get("maximum_items_to_collect", DEFAULT_MAXIMUM_ITEMS)
-    feed_url = f'http://news_server:8000/get_articles?size={maximum_items_to_collect * 3}'  # Fetch more initially
+    feed_url = f'http://news_server:8000/get_articles?size={maximum_items_to_collect}'  # Fetch more initially
     stored_data = []
 
     async def refill_data():
